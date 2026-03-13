@@ -22,6 +22,7 @@ from .signals import Signal, SignalClassifier
 from .risk import RiskGate
 from .arbitrage import CombinatorialArbScanner
 from .execution import ExecutionEngine
+from .paper_logger import PaperTradeLogger
 
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
@@ -47,6 +48,7 @@ async def run_scan_cycle(
     classifier: SignalClassifier,
     risk_gate: RiskGate,
     executor: ExecutionEngine | None,
+    paper_logger: PaperTradeLogger,
     bankroll: float,
     dry_run: bool = True,
 ):
@@ -100,6 +102,7 @@ async def run_scan_cycle(
             approved, reason = risk_gate.check_all(decision)
             if approved:
                 decisions.append(decision)
+                paper_logger.log_decision(decision, opp)
                 log.info(
                     "SIGNAL %s: %s | edge=%.3f | size=$%.2f "
                     "| lmsr=%s | impact=%.0fbps",
@@ -113,7 +116,12 @@ async def run_scan_cycle(
             else:
                 log.debug("Blocked: %s", reason)
 
+    for arb in arb_opps:
+        paper_logger.log_arb(arb)
+
     # 4. Execute (or log in dry-run)
+    log.info(paper_logger.summary())
+
     if dry_run:
         log.info(
             "DRY RUN — would place %d trades + %d arbs",
@@ -162,6 +170,7 @@ async def main():
     classifier = SignalClassifier(lmsr_adapter=lmsr_adapter)
     risk_gate = RiskGate(bankroll=bankroll)
     executor = ExecutionEngine() if not dry_run else None
+    paper_logger = PaperTradeLogger()
 
     # Train or load model
     scaler_path = Path(model_path) / "scaler.pkl"
@@ -180,7 +189,7 @@ async def main():
         try:
             await run_scan_cycle(
                 fetcher, ml_engine, llm_engine, lmsr_adapter,
-                classifier, risk_gate, executor,
+                classifier, risk_gate, executor, paper_logger,
                 bankroll=bankroll,
                 dry_run=dry_run,
             )

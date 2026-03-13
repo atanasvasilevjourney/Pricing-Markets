@@ -7,6 +7,10 @@ model/*.pkl
 
 # Logs
 logs/*.log
+logs/*.csv
+
+# Output artefacts (charts, synthetic data)
+output/
 
 # Python
 __pycache__/
