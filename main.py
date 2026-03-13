@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Polymarket Mispriced Event Detection & Trading System
-Production Entry Point — v2.0
+Production Entry Point — v3.0 (ML + LLM + LMSR microstructure)
 
 LEGAL: US persons are prohibited from trading on Polymarket.
 Educational and research purposes only.
@@ -16,6 +16,7 @@ from .config import BANKROLL, DRY_RUN, SCAN_INTERVAL_MINUTES, MODEL_DIR
 from .fetcher import PolymarketFetcher
 from .ml_engine import MLPredictionEngine
 from .llm_engine import LLMProbabilityEngine
+from .lmsr_features import LMSRAdapter
 from .detector import MispricingDetector
 from .signals import Signal, SignalClassifier
 from .risk import RiskGate
@@ -42,16 +43,19 @@ async def run_scan_cycle(
     fetcher: PolymarketFetcher,
     ml_engine: MLPredictionEngine,
     llm_engine: LLMProbabilityEngine,
+    lmsr_adapter: LMSRAdapter,
     classifier: SignalClassifier,
     risk_gate: RiskGate,
     executor: ExecutionEngine | None,
     bankroll: float,
     dry_run: bool = True,
 ):
-    log.info("═══ SCAN CYCLE START ═══")
+    log.info("═══ SCAN CYCLE START (v3 — ML+LLM+LMSR) ═══")
 
-    # 1. Detect mispriced markets
-    detector = MispricingDetector(ml_engine, llm_engine, fetcher)
+    # 1. Three-source mispricing detection
+    detector = MispricingDetector(
+        ml_engine, llm_engine, fetcher, lmsr_adapter,
+    )
     opportunities = detector.scan_all_markets(
         n_markets=50, min_volume=5_000, min_edge=0.08,
     )
@@ -59,6 +63,20 @@ async def run_scan_cycle(
         "Found %d opportunities above min_edge threshold",
         len(opportunities),
     )
+
+    for opp in opportunities[:5]:
+        lmsr = opp.get("lmsr_analysis") or {}
+        log.info(
+            "  → %s | composite=%.3f | ML=%.3f LLM=%.3f LMSR=%.3f "
+            "| b=%.0f | impact=%.0fbps",
+            opp["question"][:55],
+            opp["composite_edge"],
+            opp["ml_edge"],
+            opp.get("llm_edge", 0),
+            opp.get("lmsr_edge", 0),
+            lmsr.get("b_calibrated", 0),
+            (lmsr.get("impact_at_ref_size") or {}).get("slippage_bps", 0),
+        )
 
     # 2. Combinatorial arb scanner
     arb_scanner = CombinatorialArbScanner()
@@ -74,7 +92,7 @@ async def run_scan_cycle(
                 intra["profit_pct"],
             )
 
-    # 3. Classify signals
+    # 3. Classify signals (with impact-adjusted Kelly sizing)
     decisions = []
     for opp in opportunities:
         decision = classifier.classify(opp, bankroll)
@@ -83,11 +101,14 @@ async def run_scan_cycle(
             if approved:
                 decisions.append(decision)
                 log.info(
-                    "SIGNAL %s: %s | edge=%.3f | size=$%.2f",
+                    "SIGNAL %s: %s | edge=%.3f | size=$%.2f "
+                    "| lmsr=%s | impact=%.0fbps",
                     decision.signal.value,
-                    decision.question[:60],
+                    decision.question[:50],
                     decision.composite_edge,
                     decision.position_size,
+                    decision.lmsr_strength,
+                    decision.impact_bps,
                 )
             else:
                 log.debug("Blocked: %s", reason)
@@ -129,12 +150,16 @@ async def main():
     dry_run = DRY_RUN
     model_path = str(MODEL_DIR)
 
-    log.info("Starting | Bankroll=$%.2f | DryRun=%s", bankroll, dry_run)
+    log.info(
+        "Starting v3 (ML+LLM+LMSR) | Bankroll=$%.2f | DryRun=%s",
+        bankroll, dry_run,
+    )
 
     fetcher = PolymarketFetcher()
     ml_engine = MLPredictionEngine()
     llm_engine = LLMProbabilityEngine()
-    classifier = SignalClassifier()
+    lmsr_adapter = LMSRAdapter()
+    classifier = SignalClassifier(lmsr_adapter=lmsr_adapter)
     risk_gate = RiskGate(bankroll=bankroll)
     executor = ExecutionEngine() if not dry_run else None
 
@@ -154,7 +179,7 @@ async def main():
     while True:
         try:
             await run_scan_cycle(
-                fetcher, ml_engine, llm_engine,
+                fetcher, ml_engine, llm_engine, lmsr_adapter,
                 classifier, risk_gate, executor,
                 bankroll=bankroll,
                 dry_run=dry_run,

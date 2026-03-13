@@ -55,6 +55,20 @@ TIME_DECAY_DAYS = 3             # Auto-exit after 3 days without target
 # ── Model paths ────────────────────────────────────────────────────────
 MODEL_DIR = Path(os.getenv("MODEL_DIR", "./model"))
 
-# ── ML composite weights ──────────────────────────────────────────────
-ML_WEIGHT = 0.4
-LLM_WEIGHT = 0.6
+# ── ML / LLM / LMSR composite weights ────────────────────────────────
+# Three-source signal fusion (must sum to 1.0):
+#   ML stacking ensemble   — fast, pattern-based
+#   LLM consensus          — causal reasoning, news-aware
+#   LMSR microstructure    — market-structure, impact-aware
+ML_WEIGHT = 0.35
+LLM_WEIGHT = 0.50
+LMSR_WEIGHT = 0.15
+
+# ── LMSR microstructure parameters ───────────────────────────────────
+LMSR_FEE_RATE = 0.02               # Polymarket winner fee
+LMSR_MIN_EDGE = 0.03               # Min |p_hat - p_mkt| for LMSR signal
+LMSR_MIN_EDGE_AFTER_FEES = 0.01    # Min edge net of fees
+LMSR_DEFAULT_B = 100.0             # Fallback when calibration fails
+LMSR_MAX_IMPACT_PCT = 0.30         # Reject if impact > 30% of raw edge
+LMSR_B_FLOOR = 5.0                 # Minimum b (very thin market)
+LMSR_B_CEILING = 50_000.0          # Maximum b (deep market)
