@@ -23,6 +23,7 @@ from .risk import RiskGate
 from .arbitrage import CombinatorialArbScanner
 from .execution import ExecutionEngine
 from .paper_logger import PaperTradeLogger
+from .risk_limits import check_kill_switch, record_trades, get_current_balance
 
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
@@ -187,12 +188,22 @@ async def main():
     # Main loop
     while True:
         try:
-            await run_scan_cycle(
+            should_stop, reason = check_kill_switch(bankroll)
+            if should_stop:
+                log.warning("Kill switch triggered: %s", reason)
+                break
+
+            decisions, arb_opps = await run_scan_cycle(
                 fetcher, ml_engine, llm_engine, lmsr_adapter,
                 classifier, risk_gate, executor, paper_logger,
                 bankroll=bankroll,
                 dry_run=dry_run,
             )
+
+            n_placed = len(decisions) + len(arb_opps)
+            if n_placed > 0:
+                current = get_current_balance(bankroll) if not dry_run else None
+                record_trades(n_placed, current_balance=current)
         except KeyboardInterrupt:
             log.info("Shutdown requested")
             break

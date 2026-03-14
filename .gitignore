@@ -8,9 +8,13 @@ model/*.pkl
 # Logs
 logs/*.log
 logs/*.csv
+logs/daily_state.json
 
 # Output artefacts (charts, synthetic data)
 output/
+
+# Fetched backtest data (regenerate with scripts/fetch_polymarket_data.py)
+data/*.csv
 
 # Python
 __pycache__/

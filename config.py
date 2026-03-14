@@ -33,6 +33,11 @@ BANKROLL = float(os.getenv("BANKROLL", "500"))
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 SCAN_INTERVAL_MINUTES = int(os.getenv("SCAN_INTERVAL_MINUTES", "15"))
 
+# ── Kill switch (production safety) ─────────────────────────────────────
+DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", "0.10"))   # 10% max loss per day
+MAX_TRADES_PER_DAY = int(os.getenv("MAX_TRADES_PER_DAY", "20"))           # cap orders per calendar day
+BALANCE_FILE = os.getenv("BALANCE_FILE", "")  # optional: path to file with current balance (one number)
+
 # ── Henry-strategy optimal entry zone ──────────────────────────────────
 OPTIMAL_ENTRY_MIN = 0.05
 OPTIMAL_ENTRY_MAX = 0.20
